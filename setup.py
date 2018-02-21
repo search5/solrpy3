@@ -1,15 +1,11 @@
-# bootstrap easy_install
-import ez_setup
-ez_setup.use_setuptools()
-
 from setuptools import setup, find_packages
 import solr.core
 
 setup(
-    name = 'solrpy',
+    name = 'solrpy3',
     # We can do this because we don't rely on getting "built" to be importable:
     version = solr.core.__version__, # update only solr.core.__version__
-    url = 'http://code.google.com/p/solrpy',
+    url = 'http://github.com/search5/p/solrpy3',
     license = 'http://opensource.org/licenses/apache2.0.php',
     packages=find_packages(),
     install_requires = [],
