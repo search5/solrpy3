@@ -1,0 +1,195 @@
+--- core.py	(original)
++++ core.py	(refactored)
+@@ -239,15 +239,22 @@
+     >>> print c.raw_query(q='id:[* TO *]', wt='python', rows='10')
+ 
+ """
++from __future__ import division
++from future import standard_library
++standard_library.install_aliases()
++from builtins import str
++from past.builtins import basestring
++from builtins import object
++from past.utils import old_div
+ import sys
+ import socket
+-import httplib
+-import urlparse
++import http.client
++import urllib.parse
+ import codecs
+-import urllib
++import urllib.request, urllib.parse, urllib.error
+ import datetime
+ import logging
+-from StringIO import StringIO
++from io import StringIO
+ from xml.sax import make_parser
+ from xml.sax.handler import ContentHandler
+ from xml.sax.saxutils import escape, quoteattr
+@@ -258,7 +265,7 @@
+ __all__ = ['SolrException', 'Solr', 'SolrConnection',
+            'Response', 'SearchHandler']
+ 
+-_python_version = sys.version_info[0]+(sys.version_info[1]/10.0)
++_python_version = sys.version_info[0]+(old_div(sys.version_info[1],10.0))
+ 
+ # ===================================================================
+ # Exceptions
+@@ -336,7 +343,7 @@
+ # Connection Objects
+ # ===================================================================
+ 
+-class Solr:
++class Solr(object):
+ 
+     def __init__(self, url,
+                  persistent=True,
+@@ -373,7 +380,7 @@
+ 
+         """
+ 
+-        self.scheme, self.host, self.path = urlparse.urlparse(url, 'http')[:3]
++        self.scheme, self.host, self.path = urllib.parse.urlparse(url, 'http')[:3]
+         self.url = url
+ 
+         assert self.scheme in ('http','https')
+@@ -393,10 +400,10 @@
+             kwargs['timeout'] = self.timeout
+ 
+         if self.scheme == 'https':
+-            self.conn = httplib.HTTPSConnection(self.host,
++            self.conn = http.client.HTTPSConnection(self.host,
+                    key_file=ssl_key, cert_file=ssl_cert, **kwargs)
+         else:
+-            self.conn = httplib.HTTPConnection(self.host, **kwargs)
++            self.conn = http.client.HTTPConnection(self.host, **kwargs)
+ 
+         self.response_version = 2.2
+         self.encoder = codecs.getencoder('utf-8')
+@@ -568,7 +575,7 @@
+ 
+     def __add(self, lst, fields):
+         lst.append(u'<doc>')
+-        for field, value in fields.items():
++        for field, value in list(fields.items()):
+             # Handle multi-valued fields if values
+             # is passed in as a list/tuple
+             if not isinstance(value, (list, tuple, set)):
+@@ -592,7 +599,7 @@
+ 
+                 lst.append('<field name=%s>%s</field>' % (
+                     (quoteattr(field),
+-                    escape(unicode(value)))))
++                    escape(str(value)))))
+         lst.append('</doc>')
+ 
+     def _delete(self, id=None, ids=None, queries=None):
+@@ -605,9 +612,9 @@
+             ids.insert(0, id)
+         lst = []
+         for id in ids:
+-            lst.append(u'<id>%s</id>\n' % escape(unicode(id)))
++            lst.append(u'<id>%s</id>\n' % escape(str(id)))
+         for query in (queries or ()):
+-            lst.append(u'<query>%s</query>\n' % escape(unicode(query)))
++            lst.append(u'<query>%s</query>\n' % escape(str(query)))
+         if lst:
+             lst.insert(0, u'<delete>\n')
+             lst.append(u'</delete>')
+@@ -639,8 +646,8 @@
+                 self.conn.request('POST', url, body.encode('UTF-8'), _headers)
+                 return check_response_status(self.conn.getresponse())
+             except (socket.error,
+-                    httplib.ImproperConnectionState,
+-                    httplib.BadStatusLine):
++                    http.client.ImproperConnectionState,
++                    http.client.BadStatusLine):
+                     # We include BadStatusLine as they are spurious
+                     # and may randomly happen on an otherwise fine
+                     # Solr connection (though not often)
+@@ -808,13 +815,13 @@
+         """
+         # Clean up optional parameters to match SOLR spec.
+         query = []
+-        for key, value in params.items():
++        for key, value in list(params.items()):
+             key = key.replace(self.arg_separator, '.')
+             if isinstance(value, (list, tuple)):
+                 query.extend([(key, strify(v)) for v in value])
+             else:
+                 query.append((key, strify(value)))
+-        request = urllib.urlencode(query, doseq=True)
++        request = urllib.parse.urlencode(query, doseq=True)
+         conn = self.conn
+         if conn.debug:
+             logging.info("solrpy request: %s" % request)
+@@ -832,7 +839,7 @@
+ 
+ 
+ def strify(s):
+-    if isinstance(s, unicode):
++    if isinstance(s, str):
+         return s.encode('utf-8')
+     else:
+         return s
+@@ -862,7 +869,7 @@
+         self._params = {}
+ 
+     def _set_numFound(self, value):
+-        self._numFound = long(value)
++        self._numFound = int(value)
+ 
+     def _get_numFound(self):
+         return self._numFound
+@@ -873,7 +880,7 @@
+     numFound = property(_get_numFound, _set_numFound, _del_numFound)
+ 
+     def _set_start(self, value):
+-        self._start = long(value)
++        self._start = int(value)
+ 
+     def _get_start(self):
+         return self._start
+@@ -1010,7 +1017,7 @@
+             node.final = None
+ 
+         elif name == 'long':
+-            node.final = long(value.strip())
++            node.final = int(value.strip())
+ 
+         elif name == 'bool':
+             node.final = value.strip().lower().startswith('t')
+@@ -1055,7 +1062,7 @@
+         else:
+             raise SolrException("Unknown tag: %s" % name)
+ 
+-        for attr, val in node.attrs.items():
++        for attr, val in list(node.attrs.items()):
+             if attr != 'name':
+                 setattr(node.final, attr, val)
+ 
+@@ -1087,7 +1094,7 @@
+             self.name,
+             "".join(self.chars).strip(),
+             ' '.join(['%s="%s"' % (attr, val)
+-                            for attr, val in self.attrs.items()]))
++                            for attr, val in list(self.attrs.items())]))
+ 
+ 
+ # ===================================================================
+@@ -1161,11 +1168,11 @@
+     qs = ''
+     if query:
+         sep = '?'
+-        for k, v in query.items():
+-            k = urllib.quote(k)
++        for k, v in list(query.items()):
++            k = urllib.parse.quote(k)
+             if isinstance(v, basestring):
+                 v = [v]
+             for s in v:
+-                qs += "%s%s=%s" % (sep, k, urllib.quote_plus(s))
++                qs += "%s%s=%s" % (sep, k, urllib.parse.quote_plus(s))
+                 sep = '&'
+     return qs
